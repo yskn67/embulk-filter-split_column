@@ -73,12 +73,12 @@ task gemspec {
 Gem::Specification.new do |spec|
   spec.name          = "${project.name}"
   spec.version       = "${project.version}"
-  spec.authors       = ["Kenjo Yasui"]
-  spec.summary       = %[Split Column filter plugin for Embulk]
-  spec.description   = %[Split Column]
-  spec.email         = ["kenjyo-yasui@united.jp"]
+  spec.authors       = ["yskn67"]
+  spec.summary       = %[A filter plugin for Embulk to split one string column to several any type columns]
+  spec.description   = %[A filter plugin for Embulk to split one string column to several any type columns.]
+  spec.email         = ["yskn1967@gmail.com"]
   spec.licenses      = ["MIT"]
-  # TODO set this: spec.homepage      = "https://github.com/kenjyo-yasui/embulk-filter-split_column"
+  spec.homepage      = "https://github.com/yskn67/embulk-filter-split_column"
 
   spec.files         = `git ls-files`.split("\n") + Dir["classpath/*.jar"]
   spec.test_files    = spec.files.grep(%r"^(test|spec)/")
