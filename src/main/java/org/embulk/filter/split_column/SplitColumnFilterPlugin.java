@@ -18,10 +18,12 @@ import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
 import org.embulk.spi.SchemaConfig;
 import org.embulk.spi.time.TimestampParser;
-import org.embulk.spi.time.TimestampParseException;
 import org.embulk.spi.type.Type;
 import org.embulk.spi.type.Types;
 import org.embulk.spi.util.Timestamps;
+
+import org.embulk.spi.DataException;
+import org.embulk.spi.time.TimestampParseException;
 
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
@@ -96,7 +98,15 @@ public class SplitColumnFilterPlugin
                 while (reader.nextRecord()) {
                     String[] words = StringUtils.split(reader.getString(targetColumn),task.getDelimiter());
 					int i = 0;
-					for (ColumnConfig outputColumnConfig: task.getOutputColumns().getColumns()) {
+					SchemaConfig outputSchemaConfig = task.getOutputColumns();
+                    if (outputSchemaConfig.size() != words.length) {
+                        String message = String.format("outputColum has %d columns but value was separated in %d",
+                                outputSchemaConfig.size(),
+                                words.length
+                                );
+                        throw new SplitColumnValidateException(message);
+                    }
+					for (ColumnConfig outputColumnConfig: outputSchemaConfig.getColumns()) {
 						Column outputColumn = outputSchema.lookupColumn(outputColumnConfig.getName());
                         Type outputColumnType = outputColumn.getType();
                         if (Types.STRING.equals(outputColumnType)) {
@@ -140,5 +150,14 @@ public class SplitColumnFilterPlugin
             }
 
 		};
+    }
+
+	static class SplitColumnValidateException
+            extends DataException
+    {
+        SplitColumnValidateException(String message)
+        {
+            super(message);
+        }
     }
 }
