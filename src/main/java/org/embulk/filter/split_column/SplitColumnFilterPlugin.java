@@ -99,6 +99,7 @@ public class SplitColumnFilterPlugin
                     String[] words = StringUtils.split(reader.getString(targetColumn),task.getDelimiter());
 					int i = 0;
 					SchemaConfig outputSchemaConfig = task.getOutputColumns();
+                    // TODO: support skipping row
                     if (outputSchemaConfig.size() != words.length) {
                         String message = String.format("outputColum has %d columns but value was separated in %d",
                                 outputSchemaConfig.size(),
@@ -106,6 +107,8 @@ public class SplitColumnFilterPlugin
                                 );
                         throw new SplitColumnValidateException(message);
                     }
+                    // TODO: support default value
+                    // TODO: throw exception
 					for (ColumnConfig outputColumnConfig: outputSchemaConfig.getColumns()) {
 						Column outputColumn = outputSchema.lookupColumn(outputColumnConfig.getName());
                         Type outputColumnType = outputColumn.getType();
@@ -135,6 +138,7 @@ public class SplitColumnFilterPlugin
                     builder.addRecord();
                 }
             }
+            // TODO: use embulk-core system
             private void add_builder(Column column) {
                 if (Types.STRING.equals(column.getType())) {
                     builder.setString(column, reader.getString(column));
