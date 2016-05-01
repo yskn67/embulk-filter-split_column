@@ -46,8 +46,13 @@ public class SplitColumnFilterPlugin
         PluginTask task = config.loadConfig(PluginTask.class);
 
 		ImmutableList.Builder<Column> builder = ImmutableList.builder();
+        String targetColumnName = task.getTargetKey();
         int i = 0;
 		for (Column inputColumn: inputSchema.getColumns()) {
+            String columnName = inputColumn.getName();
+            if (columnName.equals(targetColumnName)) {
+                continue;
+            }
 		    Column outputColumn = new Column(i++, inputColumn.getName(), inputColumn.getType());
             builder.add(outputColumn);
         }
@@ -91,6 +96,9 @@ public class SplitColumnFilterPlugin
 						builder.setString(outputColumn, words[i++]);
 					}
                     for (Column column: inputSchema.getColumns()) {
+                        if (column.getName().equals(targetColumn.getName())) {
+                            continue;
+                        }
                         if (reader.isNull(column)) {
                             builder.setNull(column);
                             continue;
