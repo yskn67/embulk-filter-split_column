@@ -8,6 +8,7 @@ import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
 import org.embulk.spi.Column;
+import org.embulk.spi.ColumnConfig;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FilterPlugin;
 import org.embulk.spi.Page;
@@ -15,18 +16,21 @@ import org.embulk.spi.PageBuilder;
 import org.embulk.spi.PageOutput;
 import org.embulk.spi.PageReader;
 import org.embulk.spi.Schema;
+import org.embulk.spi.SchemaConfig;
+import org.embulk.spi.time.TimestampParser;
+import org.embulk.spi.time.TimestampParseException;
+import org.embulk.spi.type.Type;
 import org.embulk.spi.type.Types;
+import org.embulk.spi.util.Timestamps;
 
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
-
-import java.util.List;
 
 public class SplitColumnFilterPlugin
         implements FilterPlugin
 {
     public interface PluginTask
-            extends Task
+            extends Task, TimestampParser.Task
     {
         @Config("delimiter")
         @ConfigDefault("\",\"")
@@ -35,8 +39,8 @@ public class SplitColumnFilterPlugin
         @Config("target_key")
         public String getTargetKey();
 
-        @Config("output_keys")
-        public List<String> getOutputKeys();
+        @Config("output_columns")
+        public SchemaConfig getOutputColumns();
     }
 
     @Override
@@ -56,8 +60,8 @@ public class SplitColumnFilterPlugin
 		    Column outputColumn = new Column(i++, inputColumn.getName(), inputColumn.getType());
             builder.add(outputColumn);
         }
-        for (String outputKeyName : task.getOutputKeys()) {
-            Column outputColumn = new Column(i++, outputKeyName, Types.STRING);
+        for (ColumnConfig outputColumnConfig : task.getOutputColumns().getColumns()) {
+            Column outputColumn = outputColumnConfig.toColumn(i++);
             builder.add(outputColumn);
         }
         Schema outputSchema = new Schema(builder.build());
@@ -70,6 +74,7 @@ public class SplitColumnFilterPlugin
     {
         final PluginTask task = taskSource.loadTask(PluginTask.class);
         final Column targetColumn = inputSchema.lookupColumn(task.getTargetKey());
+        final TimestampParser[] timestampParsers = Timestamps.newTimestampColumnParsers(task, task.getOutputColumns());
 
         return new PageOutput() {
             private PageReader reader = new PageReader(inputSchema);
@@ -91,10 +96,22 @@ public class SplitColumnFilterPlugin
                 while (reader.nextRecord()) {
                     String[] words = StringUtils.split(reader.getString(targetColumn),task.getDelimiter());
 					int i = 0;
-					for (String outputColumnName: task.getOutputKeys()) {
-						Column outputColumn = outputSchema.lookupColumn(outputColumnName);
-						builder.setString(outputColumn, words[i++]);
-					}
+					for (ColumnConfig outputColumnConfig: task.getOutputColumns().getColumns()) {
+						Column outputColumn = outputSchema.lookupColumn(outputColumnConfig.getName());
+                        Type outputColumnType = outputColumn.getType();
+                        if (Types.STRING.equals(outputColumnType)) {
+                            builder.setString(outputColumn, words[i++]);
+                        } else if (Types.BOOLEAN.equals(outputColumnType)) {
+                            builder.setBoolean(outputColumn, Boolean.parseBoolean(words[i++]));
+                        } else if (Types.DOUBLE.equals(outputColumnType)) {
+                            builder.setDouble(outputColumn, Double.parseDouble(words[i++]));
+                        } else if (Types.LONG.equals(outputColumnType)) {
+                            builder.setLong(outputColumn, Long.parseLong(words[i++]));
+                        } else if (Types.TIMESTAMP.equals(outputColumnType)) {
+                            builder.setTimestamp(outputColumn, timestampParsers[i].parse(words[i]));
+                            i++;
+                        }
+                    }
                     for (Column column: inputSchema.getColumns()) {
                         if (column.getName().equals(targetColumn.getName())) {
                             continue;
@@ -103,21 +120,25 @@ public class SplitColumnFilterPlugin
                             builder.setNull(column);
                             continue;
                         }
-                        if (Types.STRING.equals(column.getType())) {
-                            builder.setString(column, reader.getString(column));
-                        } else if (Types.BOOLEAN.equals(column.getType())) {
-                            builder.setBoolean(column, reader.getBoolean(column));
-                        } else if (Types.DOUBLE.equals(column.getType())) {
-                            builder.setDouble(column, reader.getDouble(column));
-                        } else if (Types.LONG.equals(column.getType())) {
-                            builder.setLong(column, reader.getLong(column));
-                        } else if (Types.TIMESTAMP.equals(column.getType())) {
-                            builder.setTimestamp(column, reader.getTimestamp(column));
-                        }
+                        add_builder(column);
                     }
                     builder.addRecord();
                 }
             }
+            private void add_builder(Column column) {
+                if (Types.STRING.equals(column.getType())) {
+                    builder.setString(column, reader.getString(column));
+                } else if (Types.BOOLEAN.equals(column.getType())) {
+                    builder.setBoolean(column, reader.getBoolean(column));
+                } else if (Types.DOUBLE.equals(column.getType())) {
+                    builder.setDouble(column, reader.getDouble(column));
+                } else if (Types.LONG.equals(column.getType())) {
+                    builder.setLong(column, reader.getLong(column));
+                } else if (Types.TIMESTAMP.equals(column.getType())) {
+                    builder.setTimestamp(column, reader.getTimestamp(column));
+                }
+            }
+
 		};
     }
 }
