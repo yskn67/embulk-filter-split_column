@@ -51,19 +51,20 @@ public class SplitColumnFilterPlugin
     {
         PluginTask task = config.loadConfig(PluginTask.class);
 
-		ImmutableList.Builder<Column> builder = ImmutableList.builder();
+        ImmutableList.Builder<Column> builder = ImmutableList.builder();
         String targetColumnName = task.getTargetKey();
         int i = 0;
-		for (Column inputColumn: inputSchema.getColumns()) {
+        for (Column inputColumn: inputSchema.getColumns()) {
             String columnName = inputColumn.getName();
             if (columnName.equals(targetColumnName)) {
+                // Separate target_key column
+                for (ColumnConfig outputColumnConfig : task.getOutputColumns().getColumns()) {
+                    Column outputColumn = outputColumnConfig.toColumn(i++);
+                    builder.add(outputColumn);
+                }
                 continue;
             }
 		    Column outputColumn = new Column(i++, inputColumn.getName(), inputColumn.getType());
-            builder.add(outputColumn);
-        }
-        for (ColumnConfig outputColumnConfig : task.getOutputColumns().getColumns()) {
-            Column outputColumn = outputColumnConfig.toColumn(i++);
             builder.add(outputColumn);
         }
         Schema outputSchema = new Schema(builder.build());
@@ -82,7 +83,7 @@ public class SplitColumnFilterPlugin
             private PageReader reader = new PageReader(inputSchema);
             private PageBuilder builder = new PageBuilder(Exec.getBufferAllocator(), outputSchema, output);
 
-			@Override
+            @Override
             public void finish() {
                 builder.finish();
             }
@@ -96,64 +97,64 @@ public class SplitColumnFilterPlugin
             public void add(Page page) {
                 reader.setPage(page);
                 while (reader.nextRecord()) {
-                    String[] words = StringUtils.split(reader.getString(targetColumn),task.getDelimiter());
-					int i = 0;
-					SchemaConfig outputSchemaConfig = task.getOutputColumns();
-                    // TODO: support skipping row
-                    if (outputSchemaConfig.size() != words.length) {
-                        String message = String.format("outputColum has %d columns but value was separated in %d",
-                                outputSchemaConfig.size(),
-                                words.length
-                                );
-                        throw new SplitColumnValidateException(message);
-                    }
-                    // TODO: support default value
-                    // TODO: throw exception
-					for (ColumnConfig outputColumnConfig: outputSchemaConfig.getColumns()) {
-						Column outputColumn = outputSchema.lookupColumn(outputColumnConfig.getName());
-                        Type outputColumnType = outputColumn.getType();
-                        if (Types.STRING.equals(outputColumnType)) {
-                            builder.setString(outputColumn, words[i++]);
-                        } else if (Types.BOOLEAN.equals(outputColumnType)) {
-                            builder.setBoolean(outputColumn, Boolean.parseBoolean(words[i++]));
-                        } else if (Types.DOUBLE.equals(outputColumnType)) {
-                            builder.setDouble(outputColumn, Double.parseDouble(words[i++]));
-                        } else if (Types.LONG.equals(outputColumnType)) {
-                            builder.setLong(outputColumn, Long.parseLong(words[i++]));
-                        } else if (Types.TIMESTAMP.equals(outputColumnType)) {
-                            builder.setTimestamp(outputColumn, timestampParsers[i].parse(words[i]));
-                            i++;
-                        }
-                    }
+                    int cur = 0;
                     for (Column column: inputSchema.getColumns()) {
                         if (column.getName().equals(targetColumn.getName())) {
+                            String[] words = StringUtils.split(reader.getString(column),task.getDelimiter());
+                            SchemaConfig outputSchemaConfig = task.getOutputColumns();
+                            // TODO: support skipping row
+                            if (outputSchemaConfig.size() != words.length) {
+                                String message = String.format("outputColumn has %d columns but value was separated in %d",
+                                    outputSchemaConfig.size(),
+                                    words.length
+                                );
+                                throw new SplitColumnValidateException(message);
+                            }
+                            // TODO: support default value
+                            // TODO: throw exception
+                            int i = 0;
+                            for (ColumnConfig outputColumnConfig: outputSchemaConfig.getColumns()) {
+                                Column outputColumn = outputSchema.lookupColumn(outputColumnConfig.getName());
+                                Type outputColumnType = outputColumn.getType();
+                                if (Types.STRING.equals(outputColumnType)) {
+                                    builder.setString(cur++, words[i++]);
+                                } else if (Types.BOOLEAN.equals(outputColumnType)) {
+                                    builder.setBoolean(cur++, Boolean.parseBoolean(words[i++]));
+                                } else if (Types.DOUBLE.equals(outputColumnType)) {
+                                    builder.setDouble(cur++, Double.parseDouble(words[i++]));
+                                } else if (Types.LONG.equals(outputColumnType)) {
+                                    builder.setLong(cur++, Long.parseLong(words[i++]));
+                                } else if (Types.TIMESTAMP.equals(outputColumnType)) {
+                                    builder.setTimestamp(cur++, timestampParsers[i].parse(words[i]));
+                                    i++;
+                                }
+                            }
                             continue;
                         }
                         if (reader.isNull(column)) {
-                            builder.setNull(column);
+                            builder.setNull(cur++);
                             continue;
                         }
-                        add_builder(column);
+                        add_builder(cur++, column);
                     }
                     builder.addRecord();
                 }
             }
             // TODO: use embulk-core system
-            private void add_builder(Column column) {
+            private void add_builder(int cur, Column column) {
                 if (Types.STRING.equals(column.getType())) {
-                    builder.setString(column, reader.getString(column));
+                    builder.setString(cur, reader.getString(column));
                 } else if (Types.BOOLEAN.equals(column.getType())) {
-                    builder.setBoolean(column, reader.getBoolean(column));
+                    builder.setBoolean(cur, reader.getBoolean(column));
                 } else if (Types.DOUBLE.equals(column.getType())) {
-                    builder.setDouble(column, reader.getDouble(column));
+                    builder.setDouble(cur, reader.getDouble(column));
                 } else if (Types.LONG.equals(column.getType())) {
-                    builder.setLong(column, reader.getLong(column));
+                    builder.setLong(cur, reader.getLong(column));
                 } else if (Types.TIMESTAMP.equals(column.getType())) {
-                    builder.setTimestamp(column, reader.getTimestamp(column));
+                    builder.setTimestamp(cur, reader.getTimestamp(column));
                 }
             }
-
-		};
+        };
     }
 
 	static class SplitColumnValidateException
