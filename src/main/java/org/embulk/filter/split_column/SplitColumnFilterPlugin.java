@@ -25,18 +25,26 @@ import org.embulk.spi.util.Timestamps;
 import org.embulk.spi.DataException;
 import org.embulk.spi.time.TimestampParseException;
 
+import org.slf4j.Logger;
+
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
 
 public class SplitColumnFilterPlugin
         implements FilterPlugin
 {
+    private static final Logger log = Exec.getLogger(SplitColumnFilterPlugin.class);
+
     public interface PluginTask
             extends Task, TimestampParser.Task
     {
         @Config("delimiter")
         @ConfigDefault("\",\"")
         public String getDelimiter();
+
+        @Config("is_skip")
+        @ConfigDefault("true")
+        public Optional<Boolean> getIsSkip();
 
         @Config("target_key")
         public String getTargetKey();
@@ -96,20 +104,33 @@ public class SplitColumnFilterPlugin
             @Override
             public void add(Page page) {
                 reader.setPage(page);
+                int rowNum = 0;
                 while (reader.nextRecord()) {
-                    int cur = 0;
+                    rowNum++;
+                    String[] words = StringUtils.split(reader.getString(targetColumn),task.getDelimiter());
+                    SchemaConfig outputSchemaConfig = task.getOutputColumns();
+                    // check split values
+                    if (outputSchemaConfig.size() != words.length) {
+                        Boolean isSkip = task.getIsSkip().get();
+                        if (isSkip.booleanValue()) {
+                            String message = String.format("Skipped line %d: outputColumn has %d columns but value was separated in %d",
+                                rowNum,
+                                outputSchemaConfig.size(),
+                                words.length
+                            );
+                            log.warn(message);
+                            continue;
+                        } else {
+                            String message = String.format("outputColumn has %d columns but value was separated in %d",
+                                outputSchemaConfig.size(),
+                                words.length
+                            );
+                            throw new SplitColumnValidateException(message);
+                        }
+                    }
+                    int colNum = 0;
                     for (Column column: inputSchema.getColumns()) {
                         if (column.getName().equals(targetColumn.getName())) {
-                            String[] words = StringUtils.split(reader.getString(column),task.getDelimiter());
-                            SchemaConfig outputSchemaConfig = task.getOutputColumns();
-                            // TODO: support skipping row
-                            if (outputSchemaConfig.size() != words.length) {
-                                String message = String.format("outputColumn has %d columns but value was separated in %d",
-                                    outputSchemaConfig.size(),
-                                    words.length
-                                );
-                                throw new SplitColumnValidateException(message);
-                            }
                             // TODO: support default value
                             // TODO: throw exception
                             int i = 0;
@@ -117,41 +138,41 @@ public class SplitColumnFilterPlugin
                                 Column outputColumn = outputSchema.lookupColumn(outputColumnConfig.getName());
                                 Type outputColumnType = outputColumn.getType();
                                 if (Types.STRING.equals(outputColumnType)) {
-                                    builder.setString(cur++, words[i++]);
+                                    builder.setString(colNum++, words[i++]);
                                 } else if (Types.BOOLEAN.equals(outputColumnType)) {
-                                    builder.setBoolean(cur++, Boolean.parseBoolean(words[i++]));
+                                    builder.setBoolean(colNum++, Boolean.parseBoolean(words[i++]));
                                 } else if (Types.DOUBLE.equals(outputColumnType)) {
-                                    builder.setDouble(cur++, Double.parseDouble(words[i++]));
+                                    builder.setDouble(colNum++, Double.parseDouble(words[i++]));
                                 } else if (Types.LONG.equals(outputColumnType)) {
-                                    builder.setLong(cur++, Long.parseLong(words[i++]));
+                                    builder.setLong(colNum++, Long.parseLong(words[i++]));
                                 } else if (Types.TIMESTAMP.equals(outputColumnType)) {
-                                    builder.setTimestamp(cur++, timestampParsers[i].parse(words[i]));
+                                    builder.setTimestamp(colNum++, timestampParsers[i].parse(words[i]));
                                     i++;
                                 }
                             }
                             continue;
                         }
                         if (reader.isNull(column)) {
-                            builder.setNull(cur++);
+                            builder.setNull(colNum++);
                             continue;
                         }
-                        add_builder(cur++, column);
+                        add_builder(colNum++, column);
                     }
                     builder.addRecord();
                 }
             }
             // TODO: use embulk-core system
-            private void add_builder(int cur, Column column) {
+            private void add_builder(int colNum, Column column) {
                 if (Types.STRING.equals(column.getType())) {
-                    builder.setString(cur, reader.getString(column));
+                    builder.setString(colNum, reader.getString(column));
                 } else if (Types.BOOLEAN.equals(column.getType())) {
-                    builder.setBoolean(cur, reader.getBoolean(column));
+                    builder.setBoolean(colNum, reader.getBoolean(column));
                 } else if (Types.DOUBLE.equals(column.getType())) {
-                    builder.setDouble(cur, reader.getDouble(column));
+                    builder.setDouble(colNum, reader.getDouble(column));
                 } else if (Types.LONG.equals(column.getType())) {
-                    builder.setLong(cur, reader.getLong(column));
+                    builder.setLong(colNum, reader.getLong(column));
                 } else if (Types.TIMESTAMP.equals(column.getType())) {
-                    builder.setTimestamp(cur, reader.getTimestamp(column));
+                    builder.setTimestamp(colNum, reader.getTimestamp(column));
                 }
             }
         };

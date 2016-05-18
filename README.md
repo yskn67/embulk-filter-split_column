@@ -4,7 +4,8 @@ A filter plugin for Embulk to split one string column to several any type column
 
 ## Configuration
 
-- **delimiter**: delimiter for split column (string, required)
+- **delimiter**: delimiter for split column (string, required, default: ',')
+- **is_skip**: if true, skip the line when output_columns num and split target column num are not matched. if false, throw the exception (boolean, optional, default: true)
 - **target_key**: string column key you want to split(string, required)
 - **output_columns**: description (array of hash, required)
   - This values is same for columns in parser
@@ -51,6 +52,7 @@ In additionally, you want to split comment by '|' using split_column filter:
 filters:
   - type: split_column
     delimiter: '|'
+    is_skip: true
     target_key: comment
     output_columns:
       - {name: alph, type: string}
@@ -74,7 +76,12 @@ filters:
 
 - Write Test
 - Support default value
-- Support exception to skip row
+
+## Version
+
+- 0.1.0: first release
+- 0.1.1: bugfix
+- 0.1.2: add confing option 'is_skip'
 
 ## Build
 
