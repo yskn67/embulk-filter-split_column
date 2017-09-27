@@ -82,6 +82,7 @@ filters:
 - 0.1.0: first release
 - 0.1.1: bugfix
 - 0.1.2: add confing option 'is_skip'
+- 0.1.2: add failed log to exception msg
 
 ## Build
 
