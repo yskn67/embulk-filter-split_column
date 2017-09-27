@@ -107,23 +107,26 @@ public class SplitColumnFilterPlugin
                 int rowNum = 0;
                 while (reader.nextRecord()) {
                     rowNum++;
-                    String[] words = StringUtils.split(reader.getString(targetColumn),task.getDelimiter());
+                    String targetColumnValue = reader.getString(targetColumn);
+                    String[] words = StringUtils.split(targetColumnValue, task.getDelimiter());
                     SchemaConfig outputSchemaConfig = task.getOutputColumns();
                     // check split values
                     if (outputSchemaConfig.size() != words.length) {
                         Boolean isSkip = task.getIsSkip().get();
                         if (isSkip.booleanValue()) {
-                            String message = String.format("Skipped line %d: outputColumn has %d columns but value was separated in %d",
+                            String message = String.format("Skipped line %d: output_column has %d columns but value was separated in %d: \"%s\"",
                                 rowNum,
                                 outputSchemaConfig.size(),
-                                words.length
+                                words.length,
+                                targetColumnValue
                             );
                             log.warn(message);
                             continue;
                         } else {
-                            String message = String.format("outputColumn has %d columns but value was separated in %d",
+                            String message = String.format("output_column has %d columns but value was separated in %d: \"%s\"",
                                 outputSchemaConfig.size(),
-                                words.length
+                                words.length,
+                                targetColumnValue
                             );
                             throw new SplitColumnValidateException(message);
                         }
